@@ -3,125 +3,114 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chronicles of Aethelgard - AI Adventure</title>
+    <title>AI Mata Elang - Object Detection</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=MedievalSharp&family=Inter:wght@400;700&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #f8fafc; }
-        .medieval-font { font-family: 'MedievalSharp', cursive; }
+        /* Agar canvas posisi pas di atas video */
+        .cam-wrapper { position: relative; width: 640px; height: 480px; background: #000; border-radius: 12px; overflow: hidden; }
+        video { position: absolute; top: 0; left: 0; width: 640px; height: 480px; object-fit: cover; }
+        canvas { position: absolute; top: 0; left: 0; width: 640px; height: 480px; z-index: 10; }
     </style>
 </head>
-<body class="min-h-screen flex flex-col items-center p-4">
+<body class="bg-slate-900 text-slate-100 flex flex-col items-center justify-center min-h-screen p-4 font-sans">
 
-    <header class="text-center my-8">
-        <h1 class="text-4xl md:text-6xl text-amber-500 medieval-font mb-2">Chronicles of Aethelgard</h1>
-        <p class="text-slate-400">Sebuah petualangan yang ditulis dan dilukis oleh AI</p>
-    </header>
-
-    <div id="setup-section" class="bg-slate-800 p-6 rounded-lg border border-slate-700 w-full max-w-md shadow-xl">
-        <h2 class="text-xl font-bold mb-4">Konfigurasi AI</h2>
-        <p class="text-sm text-slate-400 mb-4">Masukkan Hugging Face API Token untuk memulai. (Dapatkan gratis di huggingface.co)</p>
-        <input type="password" id="api-key" placeholder="hf_xxxxxxxxxxxxxxxxx" class="w-full p-2 rounded bg-slate-900 border border-slate-600 mb-4 focus:border-amber-500 outline-none">
-        <button onclick="startGame()" class="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-2 rounded transition">Mulai Petualangan</button>
+    <div class="text-center mb-6">
+        <h1 class="text-3xl md:text-5xl font-bold text-teal-400 mb-2">AI Mata Elang 🦅</h1>
+        <p class="text-slate-400">Deteksi objek real-time menggunakan TensorFlow.js</p>
+        <div id="status" class="mt-4 px-4 py-2 bg-slate-800 rounded-full text-sm inline-block border border-slate-700 text-yellow-400">
+            ⏳ Memuat Model AI... (Tunggu sebentar)
+        </div>
     </div>
 
-    <main id="game-section" class="hidden w-full max-w-4xl grid grid-cols-1 md:grid-cols-2 gap-8">
-        <div class="relative group">
-            <div id="image-loader" class="hidden absolute inset-0 flex items-center justify-center bg-black/50 z-10 rounded-lg">
-                <span class="animate-spin text-4xl">🪄</span>
+    <div class="cam-wrapper shadow-2xl border-4 border-slate-700 relative">
+        <div id="loading-spinner" class="absolute inset-0 flex items-center justify-center z-20 bg-slate-900 text-white">
+            <div class="text-center">
+                <span class="text-4xl animate-spin block mb-2">⚙️</span>
+                <p>Menyiapkan Neural Network...</p>
             </div>
-            <img id="scene-image" src="https://via.placeholder.com/512x512/1e293b/fbbf24?text=Menunggu+Cerita..." alt="Scene Visual" class="w-full rounded-lg shadow-2xl border-4 border-slate-800">
         </div>
+        <video id="webcam" autoplay muted playsinline></video>
+        <canvas id="canvas"></canvas>
+    </div>
 
-        <div class="flex flex-col justify-between space-y-6">
-            <div class="bg-slate-800/50 p-6 rounded-lg border border-slate-700 h-64 overflow-y-auto">
-                <p id="story-text" class="text-lg leading-relaxed italic text-slate-200">
-                    Matahari mulai tenggelam di ufuk barat kerajaan Aethelgard...
-                </p>
-            </div>
-
-            <div id="choices" class="space-y-3">
-                </div>
-            
-            <button onclick="resetGame()" class="text-xs text-slate-500 underline hover:text-slate-300">Ulangi Cerita</button>
-        </div>
-    </main>
+    <div class="mt-8 max-w-lg text-center text-sm text-slate-500">
+        <p>Arahkan kamera ke objek seperti: <b>Orang, HP, Botol, Kursi, atau Laptop</b>.</p>
+        <p class="mt-2">Dibuat dengan TensorFlow.js & COCO-SSD Model.</p>
+    </div>
 
     <script>
-        let apiKey = "";
-        let currentScene = "Awal petualangan di gerbang kota tua Aethelgard yang megah.";
+        const video = document.getElementById('webcam');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const statusText = document.getElementById('status');
+        const loader = document.getElementById('loading-spinner');
+        let model = undefined;
 
-        async function startGame() {
-            apiKey = document.getElementById('api-key').value;
-            if (!apiKey) return alert("Masukkan API Key dulu!");
-            
-            document.getElementById('setup-section').classList.add('hidden');
-            document.getElementById('game-section').classList.remove('hidden');
-            
-            processTurn(currentScene);
-        }
+        // 1. Load Model COCO-SSD
+        cocoSsd.load().then(loadedModel => {
+            model = loadedModel;
+            statusText.innerText = "✅ Model Siap! Mengakses Kamera...";
+            statusText.classList.replace('text-yellow-400', 'text-green-400');
+            startWebcam();
+        });
 
-        async function processTurn(action) {
-            updateUI(true);
-            
-            // 1. Generate Image (Stable Diffusion)
-            const imageBlob = await queryImage(action);
-            if(imageBlob) {
-                const imageUrl = URL.createObjectURL(imageBlob);
-                document.getElementById('scene-image').src = imageUrl;
-            }
-
-            // 2. Generate Story (Karena kita ga pake backend, kita buat template atau simulasi NLP)
-            // Tip: Di sini kamu bisa integrasikan API Chat GPT/Mistral. 
-            // Sebagai contoh statis yang interaktif:
-            generateStoryFlow(action);
-            
-            updateUI(false);
-        }
-
-        async function queryImage(prompt) {
-            try {
-                const response = await fetch("https://api-inference.huggingface.co/models/runwayml/stable-diffusion-v1-5", {
-                    headers: { Authorization: `Bearer ${apiKey}` },
-                    method: "POST",
-                    body: JSON.stringify({ inputs: `fantasy medieval oil painting, ${prompt}, highly detailed` }),
+        // 2. Akses Webcam
+        function startWebcam() {
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                navigator.mediaDevices.getUserMedia({ 
+                    video: { width: 640, height: 480, facingMode: "environment" } 
+                }).then(stream => {
+                    video.srcObject = stream;
+                    video.onloadedmetadata = () => {
+                        loader.classList.add('hidden'); // Sembunyikan loading screen
+                        statusText.innerText = "⚡ Mendeteksi Objek...";
+                        detectFrame(); // Mulai loop deteksi
+                    };
+                }).catch(err => {
+                    alert("Gagal akses kamera: " + err);
+                    statusText.innerText = "❌ Izin kamera ditolak";
                 });
-                return await response.blob();
-            } catch (e) {
-                console.error("Gagal ambil gambar", e);
             }
         }
 
-        function generateStoryFlow(action) {
-            const storyElement = document.getElementById('story-text');
-            const choiceContainer = document.getElementById('choices');
-            choiceContainer.innerHTML = "";
-
-            // Simulasi Logika Naratif
-            let story = `Kamu memutuskan untuk ${action}. Di depanmu tampak kabut menyelimuti jalan setapak...`;
-            storyElement.innerText = story;
-
-            const options = [
-                { text: "Masuk ke hutan terlarang", action: "masuk ke hutan gelap" },
-                { text: "Kembali ke kedai minum", action: "minum di kedai tua" }
-            ];
-
-            options.forEach(opt => {
-                const btn = document.createElement('button');
-                btn.className = "w-full bg-slate-700 hover:bg-amber-600 p-3 rounded text-left transition border border-slate-600";
-                btn.innerText = opt.text;
-                btn.onclick = () => processTurn(opt.action);
-                choiceContainer.appendChild(btn);
+        // 3. Loop Deteksi
+        function detectFrame() {
+            model.detect(video).then(predictions => {
+                renderPredictions(predictions);
+                requestAnimationFrame(detectFrame); // Ulangi terus menerus
             });
         }
 
-        function updateUI(isLoading) {
-            const loader = document.getElementById('image-loader');
-            loader.classList.toggle('hidden', !isLoading);
-        }
+        // 4. Menggambar Kotak dan Label
+        function renderPredictions(predictions) {
+            // Bersihkan canvas dari frame sebelumnya
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Atur font
+            ctx.font = '16px sans-serif';
+            ctx.textBaseline = 'top';
 
-        function resetGame() {
-            location.reload();
+            predictions.forEach(prediction => {
+                const [x, y, width, height] = prediction.bbox;
+                const text = `${prediction.class} (${Math.round(prediction.score * 100)}%)`;
+
+                // Gambar Kotak
+                ctx.strokeStyle = '#2dd4bf'; // Warna Teal
+                ctx.lineWidth = 4;
+                ctx.strokeRect(x, y, width, height);
+
+                // Gambar Background Label
+                const textWidth = ctx.measureText(text).width;
+                ctx.fillStyle = '#2dd4bf';
+                ctx.fillRect(x, y, textWidth + 8, 24);
+
+                // Tulis Teks
+                ctx.fillStyle = '#0f172a'; // Warna Gelap
+                ctx.fillText(text, x + 4, y + 4);
+            });
         }
     </script>
 </body>
