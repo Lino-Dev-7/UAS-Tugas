@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chronicles of Aethelgard - AI Adventure</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=MedievalSharp&family=Inter:wght@400;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #f8fafc; }
+        .medieval-font { font-family: 'MedievalSharp', cursive; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center p-4">
+
+    <header class="text-center my-8">
+        <h1 class="text-4xl md:text-6xl text-amber-500 medieval-font mb-2">Chronicles of Aethelgard</h1>
+        <p class="text-slate-400">Sebuah petualangan yang ditulis dan dilukis oleh AI</p>
+    </header>
+
+    <div id="setup-section" class="bg-slate-800 p-6 rounded-lg border border-slate-700 w-full max-w-md shadow-xl">
+        <h2 class="text-xl font-bold mb-4">Konfigurasi AI</h2>
+        <p class="text-sm text-slate-400 mb-4">Masukkan Hugging Face API Token untuk memulai. (Dapatkan gratis di huggingface.co)</p>
+        <input type="password" id="api-key" placeholder="hf_xxxxxxxxxxxxxxxxx" class="w-full p-2 rounded bg-slate-900 border border-slate-600 mb-4 focus:border-amber-500 outline-none">
+        <button onclick="startGame()" class="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-2 rounded transition">Mulai Petualangan</button>
+    </div>
+
+    <main id="game-section" class="hidden w-full max-w-4xl grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div class="relative group">
+            <div id="image-loader" class="hidden absolute inset-0 flex items-center justify-center bg-black/50 z-10 rounded-lg">
+                <span class="animate-spin text-4xl">🪄</span>
+            </div>
+            <img id="scene-image" src="https://via.placeholder.com/512x512/1e293b/fbbf24?text=Menunggu+Cerita..." alt="Scene Visual" class="w-full rounded-lg shadow-2xl border-4 border-slate-800">
+        </div>
+
+        <div class="flex flex-col justify-between space-y-6">
+            <div class="bg-slate-800/50 p-6 rounded-lg border border-slate-700 h-64 overflow-y-auto">
+                <p id="story-text" class="text-lg leading-relaxed italic text-slate-200">
+                    Matahari mulai tenggelam di ufuk barat kerajaan Aethelgard...
+                </p>
+            </div>
+
+            <div id="choices" class="space-y-3">
+                </div>
+            
+            <button onclick="resetGame()" class="text-xs text-slate-500 underline hover:text-slate-300">Ulangi Cerita</button>
+        </div>
+    </main>
+
+    <script>
+        let apiKey = "";
+        let currentScene = "Awal petualangan di gerbang kota tua Aethelgard yang megah.";
+
+        async function startGame() {
+            apiKey = document.getElementById('api-key').value;
+            if (!apiKey) return alert("Masukkan API Key dulu!");
+            
+            document.getElementById('setup-section').classList.add('hidden');
+            document.getElementById('game-section').classList.remove('hidden');
+            
+            processTurn(currentScene);
+        }
+
+        async function processTurn(action) {
+            updateUI(true);
+            
+            // 1. Generate Image (Stable Diffusion)
+            const imageBlob = await queryImage(action);
+            if(imageBlob) {
+                const imageUrl = URL.createObjectURL(imageBlob);
+                document.getElementById('scene-image').src = imageUrl;
+            }
+
+            // 2. Generate Story (Karena kita ga pake backend, kita buat template atau simulasi NLP)
+            // Tip: Di sini kamu bisa integrasikan API Chat GPT/Mistral. 
+            // Sebagai contoh statis yang interaktif:
+            generateStoryFlow(action);
+            
+            updateUI(false);
+        }
+
+        async function queryImage(prompt) {
+            try {
+                const response = await fetch("https://api-inference.huggingface.co/models/runwayml/stable-diffusion-v1-5", {
+                    headers: { Authorization: `Bearer ${apiKey}` },
+                    method: "POST",
+                    body: JSON.stringify({ inputs: `fantasy medieval oil painting, ${prompt}, highly detailed` }),
+                });
+                return await response.blob();
+            } catch (e) {
+                console.error("Gagal ambil gambar", e);
+            }
+        }
+
+        function generateStoryFlow(action) {
+            const storyElement = document.getElementById('story-text');
+            const choiceContainer = document.getElementById('choices');
+            choiceContainer.innerHTML = "";
+
+            // Simulasi Logika Naratif
+            let story = `Kamu memutuskan untuk ${action}. Di depanmu tampak kabut menyelimuti jalan setapak...`;
+            storyElement.innerText = story;
+
+            const options = [
+                { text: "Masuk ke hutan terlarang", action: "masuk ke hutan gelap" },
+                { text: "Kembali ke kedai minum", action: "minum di kedai tua" }
+            ];
+
+            options.forEach(opt => {
+                const btn = document.createElement('button');
+                btn.className = "w-full bg-slate-700 hover:bg-amber-600 p-3 rounded text-left transition border border-slate-600";
+                btn.innerText = opt.text;
+                btn.onclick = () => processTurn(opt.action);
+                choiceContainer.appendChild(btn);
+            });
+        }
+
+        function updateUI(isLoading) {
+            const loader = document.getElementById('image-loader');
+            loader.classList.toggle('hidden', !isLoading);
+        }
+
+        function resetGame() {
+            location.reload();
+        }
+    </script>
+</body>
+</html>
